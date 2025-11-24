@@ -296,7 +296,7 @@ const StudentView: React.FC = () => {
             <div className="flex justify-between h-16 items-center">
               <div className="flex items-center">
                 <Link to="/" className="flex items-center space-x-2">
-                  <span className="text-xl font-bold text-white">EduPulse</span>
+                  <span className="text-xl font-bold text-white">MIREA SYNAPSE</span>
                 </Link>
               </div>
               <div className="flex items-center space-x-4">
