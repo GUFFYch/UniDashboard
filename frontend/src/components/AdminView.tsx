@@ -30,30 +30,40 @@ const AdminView: React.FC = () => {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    loadData();
+    let isMounted = true;
+    
+    const fetchData = async () => {
+      try {
+        const [statsData, studentsData, coursesData, activityData, studentsStatsData] = await Promise.all([
+          api.getDashboardStats(),
+          api.getStudents(),
+          api.getCourses(),
+          api.getActivityTimeline(30),
+          api.getStudentsBulkStats(),
+        ]);
+
+        if (isMounted) {
+          setStats(statsData);
+          setStudents(studentsData);
+          setCourses(coursesData);
+          setActivityData([]); // LMS активность убрана
+          setStudentsWithStats(studentsStatsData);
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Error loading data:', error);
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
-
-  const loadData = async () => {
-    try {
-      const [statsData, studentsData, coursesData, activityData, studentsStatsData] = await Promise.all([
-        api.getDashboardStats(),
-        api.getStudents(),
-        api.getCourses(),
-        api.getActivityTimeline(30),
-        api.getStudentsBulkStats(),
-      ]);
-
-      setStats(statsData);
-      setStudents(studentsData);
-      setCourses(coursesData);
-      setActivityData([]); // LMS активность убрана
-      setStudentsWithStats(studentsStatsData);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error loading data:', error);
-      setLoading(false);
-    }
-  };
 
   const loadAIAdvice = async () => {
     setLoadingAdvice(true);

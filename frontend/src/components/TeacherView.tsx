@@ -33,14 +33,14 @@ const TeacherView: React.FC = () => {
   const [aiAdvice, setAiAdvice] = useState<string | null>(null);
   const [loadingAdvice, setLoadingAdvice] = useState(false);
 
-  const loadCourseStats = useCallback(async (courseId: number) => {
+  const loadCourseStats = useCallback(async (courseId: number, group?: string) => {
     try {
-      const stats = await api.getCourseStats(courseId, selectedGroup || undefined);
+      const stats = await api.getCourseStats(courseId, group || undefined);
       setCourseStats(stats);
     } catch (error) {
       console.error('Error loading course stats:', error);
     }
-  }, [selectedGroup]);
+  }, []);
 
   useEffect(() => {
     loadCourses();
@@ -48,7 +48,7 @@ const TeacherView: React.FC = () => {
 
   useEffect(() => {
     if (selectedCourse) {
-      loadCourseStats(selectedCourse);
+      loadCourseStats(selectedCourse, selectedGroup || undefined);
     }
   }, [selectedCourse, selectedGroup, loadCourseStats]);
 

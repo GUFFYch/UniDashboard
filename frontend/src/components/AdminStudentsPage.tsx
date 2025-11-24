@@ -12,6 +12,7 @@ const AdminStudentsPage: React.FC = () => {
   const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('');
   const [groups, setGroups] = useState<string[]>([]);
+  const [expandedDepartments, setExpandedDepartments] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [groupStats, setGroupStats] = useState<{ [key: string]: { average_gpa: number; attendance_rate: number } }>({});
   const [studentsWithStats, setStudentsWithStats] = useState<{ [key: number]: { gpa: number; attendance_rate: number; present_today?: boolean } }>({});
@@ -53,6 +54,28 @@ const AdminStudentsPage: React.FC = () => {
       console.error('Error loading students:', error);
       setLoading(false);
     }
+  };
+
+  // Функция для определения кафедры по названию группы
+  const getDepartmentFromGroup = (groupName: string): string => {
+    if (!groupName || groupName === 'Без группы') {
+      return 'Без кафедры';
+    }
+    // Извлекаем кафедру из названия группы (например, "ИТ-1" -> "ИТ", "ПИ-2" -> "ПИ")
+    const match = groupName.match(/^([А-ЯЁ]+)/);
+    return match ? match[1] : 'Другое';
+  };
+
+  const toggleDepartment = (department: string) => {
+    setExpandedDepartments(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(department)) {
+        newSet.delete(department);
+      } else {
+        newSet.add(department);
+      }
+      return newSet;
+    });
   };
 
   const filterStudents = () => {
@@ -106,15 +129,37 @@ const AdminStudentsPage: React.FC = () => {
     return 0;
   });
 
-  // Группировка студентов по группам (после сортировки)
-  const studentsByGroup: { [key: string]: Student[] } = {};
+  // Группировка студентов по кафедрам -> группам (после сортировки)
+  // Сначала создаем структуру для ВСЕХ групп из базы данных
+  const studentsByDepartmentAndGroup: { [department: string]: { [group: string]: Student[] } } = {};
+  
+  // Инициализируем все группы из базы данных
+  groups.forEach(group => {
+    const department = getDepartmentFromGroup(group);
+    if (!studentsByDepartmentAndGroup[department]) {
+      studentsByDepartmentAndGroup[department] = {};
+    }
+    if (!studentsByDepartmentAndGroup[department][group]) {
+      studentsByDepartmentAndGroup[department][group] = [];
+    }
+  });
+  
+  // Добавляем отфильтрованных студентов в соответствующие группы
   sortedStudents.forEach(student => {
     const group = student.group || 'Без группы';
-    if (!studentsByGroup[group]) {
-      studentsByGroup[group] = [];
+    const department = getDepartmentFromGroup(group);
+    
+    if (!studentsByDepartmentAndGroup[department]) {
+      studentsByDepartmentAndGroup[department] = {};
     }
-    studentsByGroup[group].push(student);
+    if (!studentsByDepartmentAndGroup[department][group]) {
+      studentsByDepartmentAndGroup[department][group] = [];
+    }
+    studentsByDepartmentAndGroup[department][group].push(student);
   });
+  
+  // Получаем все уникальные кафедры из всех групп
+  const allDepartments = Array.from(new Set(groups.map(group => getDepartmentFromGroup(group)))).sort();
 
   const filteredGroups = selectedDepartment
     ? groups.filter(g => {
@@ -137,11 +182,11 @@ const AdminStudentsPage: React.FC = () => {
     });
   };
 
-  // При первой загрузке разворачиваем все группы
+  // При первой загрузке разворачиваем все кафедры
   useEffect(() => {
-    const groupKeys = Object.keys(studentsByGroup);
-    if (groupKeys.length > 0 && expandedGroups.size === 0) {
-      setExpandedGroups(new Set(groupKeys));
+    const departmentKeys = Object.keys(studentsByDepartmentAndGroup);
+    if (departmentKeys.length > 0 && expandedDepartments.size === 0) {
+      setExpandedDepartments(new Set(departmentKeys));
     }
   }, [filteredStudents.length]);
 
@@ -245,107 +290,148 @@ const AdminStudentsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Список студентов, сгруппированных по группам */}
-      {Object.keys(studentsByGroup).length === 0 ? (
+      {/* Список студентов, сгруппированных по кафедрам -> группам */}
+      {allDepartments.length === 0 ? (
         <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 text-center">
-          <p className="text-white/60 text-lg">Студентов не найдено</p>
+          <p className="text-white/60 text-lg">Групп не найдено</p>
         </div>
       ) : (
-        Object.entries(studentsByGroup).map(([group, groupStudents]) => {
-          const isExpanded = expandedGroups.has(group);
-          return (
-            <div
-              key={group}
-              className="mb-6 bg-white/10 backdrop-blur-lg rounded-xl border border-white/20 overflow-hidden transition-all"
-            >
-              {/* Заголовок группы - кликабельный для сворачивания */}
-              <div
-                className="p-6 cursor-pointer hover:bg-white/5 transition-colors"
-                onClick={() => toggleGroup(group)}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
-                      <span className="text-white/60 text-xl">▶</span>
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-white">
-                        Группа {group}
-                      </h2>
-                      <p className="text-white/60 text-sm mt-1">
-                        {groupStudents.length} {groupStudents.length === 1 ? 'студент' : groupStudents.length < 5 ? 'студента' : 'студентов'}
-                      </p>
-                      {groupStats[group] && (
-                        <div className="flex items-center gap-4 mt-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-white/60 text-sm">Средний балл:</span>
-                            <span className="text-yellow-400 font-bold">{formatGrade(groupStats[group].average_gpa)}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-white/60 text-sm">Посещаемость:</span>
-                            <span className="text-green-400 font-bold">{groupStats[group].attendance_rate.toFixed(1)}%</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Link
-                      to={`/group/${generateGroupHash(group)}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 rounded-lg text-blue-300 text-sm transition-colors"
-                    >
-                      Перейти к группе →
-                    </Link>
-                  </div>
-                </div>
-              </div>
+        <>
+          {allDepartments.map((department) => {
+              const isDepartmentExpanded = expandedDepartments.has(department);
+              const groupsInDepartment = studentsByDepartmentAndGroup[department] || {};
+              const totalStudentsInDepartment = Object.values(groupsInDepartment).reduce(
+                (sum, students) => sum + students.length,
+                0
+              );
               
-              {/* Содержимое группы - показывается только если развернута */}
-              {isExpanded && (
-                <div className="px-6 pb-6 pt-2 border-t border-white/10">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-                    {groupStudents.map((student) => (
-                      <div
-                        key={student.id}
-                        className="bg-white/5 backdrop-blur-lg rounded-lg p-4 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all"
-                      >
-                        <Link to={`/student/${student.hash_id}`} className="block">
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex-1">
-                              <div className="text-white font-medium mb-1 flex items-center gap-2">
-                                {student.name}
-                                {student.is_headman && (
-                                  <span className="bg-yellow-500/20 text-yellow-300 text-xs px-2 py-1 rounded">
-                                    Староста
+              // Подсчитываем ВСЕ группы этой кафедры из базы данных
+              const allGroupsInDepartment = groups.filter(group => getDepartmentFromGroup(group) === department);
+              const totalGroupsInDepartment = allGroupsInDepartment.length;
+
+              return (
+                <div key={department} className="mb-4 border-b border-white/10 last:border-b-0 pb-4 last:pb-0">
+                  {/* Плашка кафедры */}
+                  <button
+                    onClick={() => toggleDepartment(department)}
+                    className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-lg hover:from-blue-500/30 hover:to-purple-500/30 transition-colors text-left mb-3 border border-blue-500/30"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{isDepartmentExpanded ? '▼' : '▶'}</span>
+                      <div>
+                        <h3 className="text-lg font-bold text-white">
+                          Кафедра {department}
+                        </h3>
+                        <p className="text-white/60 text-sm">
+                          {totalGroupsInDepartment} групп, {totalStudentsInDepartment} студентов
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Группы внутри кафедры - показываем ВСЕ группы из базы данных */}
+                  {isDepartmentExpanded && (
+                    <div className="ml-6 space-y-3">
+                      {groups
+                        .filter(group => {
+                          // Фильтруем группы по кафедре
+                          const groupDepartment = getDepartmentFromGroup(group);
+                          return groupDepartment === department;
+                        })
+                        .sort()
+                        .map((group) => {
+                          const isGroupExpanded = expandedGroups.has(group);
+                          const studentsInGroup = groupsInDepartment[group] || [];
+
+                          return (
+                            <div key={group} className="border-l-2 border-white/10 pl-4">
+                              {/* Плашка группы */}
+                              <button
+                                onClick={() => toggleGroup(group)}
+                                className="w-full flex items-center justify-between p-3 bg-white/5 rounded-lg hover:bg-white/10 transition-colors text-left mb-2"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg">{isGroupExpanded ? '▼' : '▶'}</span>
+                                  <h4 className="text-base font-semibold text-white">
+                                    Группа {group}
+                                  </h4>
+                                  <span className="text-white/60 text-sm">
+                                    ({studentsInGroup.length} {studentsInGroup.length === 1 ? 'студент' : studentsInGroup.length < 5 ? 'студента' : 'студентов'})
                                   </span>
-                                )}
-                              </div>
-                              <div className="text-white/60 text-sm mb-1">{student.group}</div>
-                              <div className="text-white/60 text-sm">{student.email}</div>
-                            </div>
-                            {/* Индикатор посещаемости сегодня */}
-                            <div className="flex-shrink-0 ml-2">
-                              {studentsWithStats[student.id]?.present_today ? (
-                                <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center" title="Был сегодня в университете">
-                                  <span className="text-white text-xs font-bold">✓</span>
+                                  {groupStats[group] && (
+                                    <>
+                                      <span className="text-white/40 text-sm mx-2">•</span>
+                                      <span className="text-white/60 text-sm">Средний балл:</span>
+                                      <span className="text-yellow-400 font-bold text-sm ml-1">{formatGrade(groupStats[group].average_gpa)}</span>
+                                      <span className="text-white/40 text-sm mx-2">•</span>
+                                      <span className="text-white/60 text-sm">Посещаемость:</span>
+                                      <span className="text-green-400 font-bold text-sm ml-1">{groupStats[group].attendance_rate.toFixed(1)}%</span>
+                                    </>
+                                  )}
                                 </div>
-                              ) : (
-                                <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center" title="Не был сегодня в университете">
-                                  <span className="text-white text-xs font-bold">Н</span>
+                                <Link
+                                  to={`/group/${generateGroupHash(group)}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 rounded-lg text-blue-300 text-xs transition-colors"
+                                >
+                                  Перейти →
+                                </Link>
+                              </button>
+
+                              {/* Студенты внутри группы */}
+                              {isGroupExpanded && (
+                                <div className="mt-3 ml-6">
+                                  {studentsInGroup.length === 0 ? (
+                                    <div className="text-white/60 text-sm py-4">
+                                      В этой группе нет студентов, соответствующих фильтрам
+                                    </div>
+                                  ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                      {studentsInGroup.map((student) => (
+                                        <Link
+                                          key={student.id}
+                                          to={`/student/${student.hash_id}`}
+                                          className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors flex items-start justify-between"
+                                        >
+                                          <div className="flex-1">
+                                            <div className="text-white font-medium flex items-center gap-2">
+                                              {student.name}
+                                              {student.is_headman && (
+                                                <span className="bg-yellow-500/20 text-yellow-300 text-xs px-1.5 py-0.5 rounded">
+                                                  Староста
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="text-white/60 text-sm">{student.group}</div>
+                                            <div className="text-white/60 text-sm">{student.email}</div>
+                                          </div>
+                                          {/* Индикатор посещаемости сегодня */}
+                                          <div className="flex-shrink-0 ml-2">
+                                            {studentsWithStats[student.id]?.present_today ? (
+                                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center" title="Был сегодня в университете">
+                                                <span className="text-white text-xs font-bold">✓</span>
+                                              </div>
+                                            ) : (
+                                              <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center" title="Не был сегодня в университете">
+                                                <span className="text-white text-xs font-bold">Н</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </Link>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
-                          </div>
-                        </Link>
-                      </div>
-                    ))}
-                  </div>
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })
+              );
+            })}
+        </>
       )}
     </div>
   );

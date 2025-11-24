@@ -8,6 +8,9 @@ from datetime import date, timedelta, datetime
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr
 import hashlib
+import os
+from dotenv import load_dotenv
+from pathlib import Path
 
 from app.database import get_db, engine, Base
 from app.models import (
@@ -28,6 +31,13 @@ from app.auth import (
     create_access_token
 )
 
+# Загружаем переменные окружения
+env_path = Path(__file__).parent.parent.parent / '.env'
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    load_dotenv()
+
 # Создаем таблицы
 Base.metadata.create_all(bind=engine)
 
@@ -37,12 +47,19 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS
+# CORS - настройка для безопасности
+# Разрешенные источники из переменных окружения (для продакшена)
+ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "*")
+if ALLOWED_ORIGINS_ENV == "*":
+    ALLOWED_ORIGINS = ["*"]
+else:
+    ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS_ENV.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 

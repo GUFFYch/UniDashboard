@@ -7,7 +7,21 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30 секунд таймаут для запросов
 });
+
+// Логирование запросов в development режиме
+if (process.env.NODE_ENV === 'development') {
+  apiClient.interceptors.request.use(
+    (config) => {
+      console.log('API Request:', config.method?.toUpperCase(), config.url);
+      return config;
+    },
+    (error) => {
+      return Promise.reject(error);
+    }
+  );
+}
 
 // Функция для установки токена
 export const setAuthToken = (token: string | null) => {
@@ -24,33 +38,20 @@ if (savedToken) {
   setAuthToken(savedToken);
 }
 
-// Interceptor для логирования запросов (только в development)
-if (process.env.NODE_ENV === 'development') {
-  apiClient.interceptors.request.use(
-    (config) => {
-      console.log('API Request:', config.method?.toUpperCase(), config.url);
-      console.log('Headers:', config.headers);
-      return config;
-    },
-    (error) => {
-      return Promise.reject(error);
+// Interceptor для обработки ошибок авторизации
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      console.error('401 Unauthorized - Token may be invalid or expired');
+      // Очищаем токен при 401
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      setAuthToken(null);
     }
-  );
-
-  apiClient.interceptors.response.use(
-    (response) => response,
-    (error) => {
-      if (error.response?.status === 401) {
-        console.error('401 Unauthorized - Token may be invalid or expired');
-        // Очищаем токен при 401
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        setAuthToken(null);
-      }
-      return Promise.reject(error);
-    }
-  );
-}
+    return Promise.reject(error);
+  }
+);
 
 export interface DashboardStats {
   total_students: number;

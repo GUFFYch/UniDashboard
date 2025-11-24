@@ -2,16 +2,26 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 import bcrypt
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, Student, Teacher
 
-# Секретный ключ для JWT (в продакшене должен быть в переменных окружения)
-SECRET_KEY = "edupulse-secret-key-change-in-production"
+# Загружаем переменные окружения из .env файла
+env_path = Path(__file__).parent.parent.parent / '.env'
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    load_dotenv()
+
+# Секретный ключ для JWT (должен быть в переменных окружения в продакшене)
+SECRET_KEY = os.getenv("SECRET_KEY", "edupulse-secret-key-change-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # 30 дней
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(30 * 24 * 60)))  # 30 дней по умолчанию
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 

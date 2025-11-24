@@ -48,17 +48,27 @@ const Dashboard: React.FC = () => {
   // Загружаем исходную статистику без фильтров (только один раз при монтировании)
   // Это нужно для карточки "Мои группы", которая не должна меняться при фильтрации
   useEffect(() => {
+    let isMounted = true;
+    
     if (!originalStats) {
       api.getDashboardStats().then(originalStatsData => {
-        setOriginalStats(originalStatsData);
-        // Если stats еще не загружены, используем originalStats как начальные stats
-        if (!stats) {
-          setStats(originalStatsData);
+        if (isMounted) {
+          setOriginalStats(originalStatsData);
+          // Если stats еще не загружены, используем originalStats как начальные stats
+          if (!stats) {
+            setStats(originalStatsData);
+          }
         }
       }).catch(error => {
-        console.error('Error loading original stats:', error);
+        if (isMounted) {
+          console.error('Error loading original stats:', error);
+        }
       });
     }
+    
+    return () => {
+      isMounted = false;
+    };
   }, []); // Загружаем только один раз при монтировании
 
   const loadData = useCallback(async () => {
@@ -107,6 +117,11 @@ const Dashboard: React.FC = () => {
     }
   }, [leaderboardLimit, selectedGroups, selectedDepartment]);
 
+  // Загружаем данные при изменении фильтров
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
   // Обработка добавления группы
   const handleAddGroup = () => {
     const group = groupInput.trim();
@@ -154,6 +169,14 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-white text-xl">Загрузка...</div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
