@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api, StudentStats, Grade, Course } from '../services/api';
 import { formatGrade } from '../utils/rounding';
 import { generateGroupHash } from '../utils/groupHash';
+import ReactMarkdown from 'react-markdown';
 import {
   LineChart,
   Line,
@@ -28,6 +29,9 @@ const StudentView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedCourse, setSelectedCourse] = useState<number | null>(null);
   const [showGradesDetail, setShowGradesDetail] = useState(false);
+  const [aiAdvice, setAiAdvice] = useState<string | null>(null);
+  const [loadingAdvice, setLoadingAdvice] = useState(false);
+  const [adviceType, setAdviceType] = useState<'pleasant' | 'useful'>('pleasant');
 
   const loadMyStats = useCallback(async () => {
     try {
@@ -52,12 +56,44 @@ const StudentView: React.FC = () => {
         }
       }
       
+      // ИИ-совет теперь загружается только по кнопке
+      
       setLoading(false);
     } catch (error) {
       console.error('Error loading data:', error);
       setLoading(false);
     }
   }, [user]);
+
+  const loadAIAdvice = useCallback(async (type: 'pleasant' | 'useful' = adviceType) => {
+    if (user?.role === 'student' && user.student_id) {
+      setLoadingAdvice(true);
+      setAdviceType(type);
+      try {
+        const response = await api.getAIStudentAdvice(type);
+        setAiAdvice(response.advice);
+      } catch (error) {
+        console.error('Error loading AI advice:', error);
+        setAiAdvice(null);
+      } finally {
+        setLoadingAdvice(false);
+      }
+    }
+  }, [user, adviceType]);
+
+  const loadAIAdviceForStudent = useCallback(async (studentId: number, type: 'pleasant' | 'useful' = adviceType) => {
+    setLoadingAdvice(true);
+    setAdviceType(type);
+    try {
+      const response = await api.getAIStudentAdviceById(studentId, type);
+      setAiAdvice(response.advice);
+    } catch (error) {
+      console.error('Error loading AI advice:', error);
+      setAiAdvice(null);
+    } finally {
+      setLoadingAdvice(false);
+    }
+  }, [adviceType]);
 
   const loadStudentByHash = useCallback(async () => {
     try {
@@ -82,6 +118,8 @@ const StudentView: React.FC = () => {
           console.log('Achievements not available');
         }
       }
+      
+      // ИИ-совет теперь загружается только по кнопке
       
       setLoading(false);
     } catch (error) {
@@ -722,6 +760,118 @@ const StudentView: React.FC = () => {
                 </div>
               </Link>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ИИ-совет */}
+      {(user?.role === 'student' || hashId) && (
+        <div className="bg-gradient-to-r from-blue-500/20 to-purple-500/20 backdrop-blur-lg rounded-xl p-6 border border-blue-500/30 shadow-lg mt-8">
+          <div className="flex items-start gap-4">
+            <div className="text-3xl flex-shrink-0">🤖</div>
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xl font-bold text-white">Совет от ИИ</h2>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (user?.role === 'student' && user.student_id) {
+                        loadAIAdvice('pleasant');
+                      } else if (hashId && stats?.student.id) {
+                        loadAIAdviceForStudent(stats.student.id, 'pleasant');
+                      }
+                    }}
+                    disabled={loadingAdvice}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      adviceType === 'pleasant'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-white/10 text-white/80 hover:bg-white/20'
+                    } ${loadingAdvice ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    Приятный совет
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (user?.role === 'student' && user.student_id) {
+                        loadAIAdvice('useful');
+                      } else if (hashId && stats?.student.id) {
+                        loadAIAdviceForStudent(stats.student.id, 'useful');
+                      }
+                    }}
+                    disabled={loadingAdvice}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      adviceType === 'useful'
+                        ? 'bg-purple-500 text-white'
+                        : 'bg-white/10 text-white/80 hover:bg-white/20'
+                    } ${loadingAdvice ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    Полезный совет
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (user?.role === 'student' && user.student_id) {
+                        loadAIAdvice(adviceType);
+                      } else if (hashId && stats?.student.id) {
+                        loadAIAdviceForStudent(stats.student.id, adviceType);
+                      }
+                    }}
+                    disabled={loadingAdvice}
+                    className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white/80 hover:text-white transition-colors text-sm"
+                    title="Перегенерировать совет"
+                  >
+                    🔄
+                  </button>
+                </div>
+              </div>
+              {loadingAdvice ? (
+                <div className="text-white/60 flex items-center gap-2">
+                  <div className="animate-spin">⏳</div>
+                  <span>Генерация совета...</span>
+                </div>
+              ) : aiAdvice ? (
+                <div className="markdown-content">
+                  <ReactMarkdown
+                    components={{
+                      p: ({ node, ...props }) => <p className="text-white/90 leading-relaxed mb-3" {...props} />,
+                      strong: ({ node, ...props }) => <strong className="text-white font-semibold" {...props} />,
+                      em: ({ node, ...props }) => <em className="text-white/80 italic" {...props} />,
+                      ul: ({ node, ...props }) => (
+                        <ul className="list-disc text-white/90 space-y-2 my-3 ml-6" {...props} />
+                      ),
+                      ol: ({ node, ...props }) => (
+                        <ol className="list-decimal text-white/90 space-y-2 my-3 ml-6" {...props} />
+                      ),
+                      li: ({ node, ...props }) => (
+                        <li className="text-white/90 leading-relaxed mb-1.5" {...props} />
+                      ),
+                      h1: ({ node, ...props }) => <h1 className="text-white text-xl font-bold mb-3 mt-4" {...props} />,
+                      h2: ({ node, ...props }) => <h2 className="text-white text-lg font-bold mb-2 mt-3" {...props} />,
+                      h3: ({ node, ...props }) => <h3 className="text-white text-base font-semibold mb-2 mt-2" {...props} />,
+                      code: ({ node, ...props }) => <code className="bg-white/10 text-yellow-300 px-1.5 py-0.5 rounded text-sm font-mono" {...props} />,
+                      blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-blue-500/50 pl-4 italic text-white/80 my-3" {...props} />,
+                    }}
+                  >
+                    {aiAdvice}
+                  </ReactMarkdown>
+                  {adviceType === 'useful' && (
+                    <p className="text-white/60 text-xs mt-4 pt-3 border-t border-white/10">
+                      💡 Полезный совет анализирует ваши оценки по каждому предмету и дает конкретные рекомендации
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <p className="text-white/60 text-sm mb-3">
+                    Выберите тип совета и нажмите кнопку для генерации персональных рекомендаций на основе вашей успеваемости.
+                  </p>
+                  <div className="flex gap-2 text-xs text-white/50">
+                    <span>💡 Приятный совет — мотивирующий и общий</span>
+                    <span>•</span>
+                    <span> Полезный совет — детальный анализ по предметам</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

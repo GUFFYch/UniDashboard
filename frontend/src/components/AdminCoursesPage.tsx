@@ -91,11 +91,6 @@ const AdminCoursesPage: React.FC = () => {
               {course.code && (
                 <div className="text-white/60 text-sm mb-1">Код: {course.code}</div>
               )}
-              {course.credits && (
-                <div className="text-white/60 text-sm mb-1">
-                  {course.credits} кредитов
-                </div>
-              )}
               {course.semester && (
                 <div className="text-white/60 text-sm">Семестр: {course.semester}</div>
               )}

@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api, Course, Grade, Student } from '../services/api';
 import { formatGrade } from '../utils/rounding';
 import { generateGroupHash } from '../utils/groupHash';
+import ReactMarkdown from 'react-markdown';
 import {
   BarChart,
   Bar,
@@ -27,6 +28,8 @@ const CoursePage: React.FC = () => {
   const [grades, setGrades] = useState<Grade[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
+  const [aiAdvice, setAiAdvice] = useState<string | null>(null);
+  const [loadingAdvice, setLoadingAdvice] = useState(false);
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => {
     // Начинаем с понедельника текущей недели
     const today = new Date();
@@ -178,8 +181,7 @@ const CoursePage: React.FC = () => {
             <h1 className="text-4xl font-bold text-white mb-2">{course.name}</h1>
             <p className="text-white/80">
               {course.code && `${course.code} • `}
-              {course.credits && `${course.credits} кредитов`}
-              {course.semester && ` • Семестр ${course.semester}`}
+              {course.semester && ` Семестр ${course.semester}`}
             </p>
             {groupFilter && (
               <div className="mt-2 flex items-center gap-3">
@@ -196,12 +198,6 @@ const CoursePage: React.FC = () => {
             )}
           </div>
         </div>
-        {course.credits && (
-          <p className="text-white/60 text-sm mt-2">
-            Кредит (credit) — единица измерения учебной нагрузки студента. 
-            Один кредит обычно равен 36 академическим часам работы студента.
-          </p>
-        )}
       </div>
 
       {/* Статистика курса */}
@@ -221,6 +217,88 @@ const CoursePage: React.FC = () => {
             <h3 className="text-lg font-bold text-white mb-2">Посещаемость</h3>
             <div className="text-4xl font-bold text-green-400">
               {courseStats.attendance_rate?.toFixed(1) || '0'}%
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ИИ-совет по курсу (только для студентов) */}
+      {user?.role === 'student' && user.student_id && id && (
+        <div className="bg-gradient-to-r from-blue-500/20 to-purple-500/20 backdrop-blur-lg rounded-xl p-6 border border-blue-500/30 shadow-lg mb-8">
+          <div className="flex items-start gap-4">
+            <div className="text-3xl flex-shrink-0">🤖</div>
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xl font-bold text-white">Совет по предмету</h2>
+                <button
+                  onClick={async () => {
+                    if (!user.student_id || !id) return;
+                    setLoadingAdvice(true);
+                    try {
+                      const response = await api.getAIStudentCourseAdvice(user.student_id, parseInt(id));
+                      setAiAdvice(response.advice);
+                    } catch (error) {
+                      console.error('Error loading AI advice:', error);
+                      setAiAdvice(null);
+                    } finally {
+                      setLoadingAdvice(false);
+                    }
+                  }}
+                  disabled={loadingAdvice}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 disabled:cursor-not-allowed rounded-lg text-white font-medium transition-colors text-sm flex items-center gap-2"
+                >
+                  {loadingAdvice ? (
+                    <>
+                      <div className="animate-spin">⏳</div>
+                      <span>Генерация...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>✨</span>
+                      <span>Сгенерировать совет</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              {loadingAdvice ? (
+                <div className="text-white/60 flex items-center gap-2">
+                  <div className="animate-spin">⏳</div>
+                  <span>Генерация совета...</span>
+                </div>
+              ) : aiAdvice ? (
+                <div className="markdown-content">
+                  <ReactMarkdown
+                    components={{
+                      p: ({ node, ...props }) => <p className="text-white/90 leading-relaxed mb-3" {...props} />,
+                      strong: ({ node, ...props }) => <strong className="text-white font-semibold" {...props} />,
+                      em: ({ node, ...props }) => <em className="text-white/80 italic" {...props} />,
+                      ul: ({ node, ...props }) => (
+                        <ul className="list-disc text-white/90 space-y-2 my-3 ml-6" {...props} />
+                      ),
+                      ol: ({ node, ...props }) => (
+                        <ol className="list-decimal text-white/90 space-y-2 my-3 ml-6" {...props} />
+                      ),
+                      li: ({ node, ...props }) => (
+                        <li className="text-white/90 leading-relaxed mb-1.5" {...props} />
+                      ),
+                      h1: ({ node, ...props }) => <h1 className="text-white text-xl font-bold mb-3 mt-4" {...props} />,
+                      h2: ({ node, ...props }) => <h2 className="text-white text-lg font-bold mb-2 mt-3" {...props} />,
+                      h3: ({ node, ...props }) => <h3 className="text-white text-base font-semibold mb-2 mt-2" {...props} />,
+                      code: ({ node, ...props }) => <code className="bg-white/10 text-yellow-300 px-1.5 py-0.5 rounded text-sm font-mono" {...props} />,
+                      blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-blue-500/50 pl-4 italic text-white/80 my-3" {...props} />,
+                    }}
+                  >
+                    {aiAdvice}
+                  </ReactMarkdown>
+                  <p className="text-white/60 text-xs mt-4 pt-3 border-t border-white/10">
+                    💡 Совет анализирует ваши оценки по этому предмету и дает конкретные рекомендации для улучшения
+                  </p>
+                </div>
+              ) : (
+                <p className="text-white/60 text-sm">
+                  Нажмите кнопку "Сгенерировать совет", чтобы получить персональные рекомендации по этому предмету на основе ваших оценок.
+                </p>
+              )}
             </div>
           </div>
         </div>

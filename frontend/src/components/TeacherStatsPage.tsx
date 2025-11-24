@@ -125,9 +125,6 @@ const TeacherStatsPage: React.FC = () => {
                 {course.code && (
                   <div className="text-white/60 text-sm">Код: {course.code}</div>
                 )}
-                {course.credits && (
-                  <div className="text-white/60 text-sm">{course.credits} кредитов</div>
-                )}
               </Link>
             ))}
           </div>

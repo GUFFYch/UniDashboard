@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { api, Course, Student } from '../services/api';
 import { formatGrade } from '../utils/rounding';
+import ReactMarkdown from 'react-markdown';
 import {
   BarChart,
   Bar,
@@ -16,6 +18,7 @@ import {
 } from 'recharts';
 
 const TeacherView: React.FC = () => {
+  const { user } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<number | null>(null);
@@ -27,6 +30,8 @@ const TeacherView: React.FC = () => {
   const [studentsWithStats, setStudentsWithStats] = useState<{ [key: number]: { gpa: number; attendance_rate: number; present_today?: boolean } }>({});
   const [groupSearchQuery, setGroupSearchQuery] = useState<string>('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [aiAdvice, setAiAdvice] = useState<string | null>(null);
+  const [loadingAdvice, setLoadingAdvice] = useState(false);
 
   const loadCourseStats = useCallback(async (courseId: number) => {
     try {
@@ -75,11 +80,28 @@ const TeacherView: React.FC = () => {
       }
       
       setLoading(false);
+      
+      // ИИ-совет теперь загружается только по кнопке
     } catch (error) {
       console.error('Error loading courses:', error);
       setLoading(false);
     }
   };
+
+  const loadAIAdvice = useCallback(async () => {
+    if (user?.role === 'teacher' && user.teacher_id) {
+      setLoadingAdvice(true);
+      try {
+        const response = await api.getAITeacherAdvice();
+        setAiAdvice(response.advice);
+      } catch (error) {
+        console.error('Error loading AI advice:', error);
+        setAiAdvice(null);
+      } finally {
+        setLoadingAdvice(false);
+      }
+    }
+  }, [user]);
   
   const toggleGroup = (group: string) => {
     setExpandedGroups(prev => {
@@ -395,35 +417,72 @@ const TeacherView: React.FC = () => {
               </p>
             </div>
           )}
+        </>
+      )}
 
-          {/* Рекомендации */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-            <h2 className="text-xl font-bold text-white mb-4">Рекомендации</h2>
-            <div className="space-y-3">
-              {courseStats.attendance_rate < 80 && (
-                <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4">
-                  <p className="text-white">
-                    Посещаемость ниже 80%. Рекомендуется обратить внимание на студентов с низкой посещаемостью.
-                  </p>
+      {/* ИИ-совет */}
+      {user?.role === 'teacher' && (
+        <div className="bg-gradient-to-r from-blue-500/20 to-purple-500/20 backdrop-blur-lg rounded-xl p-6 border border-blue-500/30 shadow-lg mt-8">
+          <div className="flex items-start gap-4">
+            <div className="text-3xl flex-shrink-0">🤖</div>
+            <div className="flex-1">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xl font-bold text-white">Совет от ИИ</h2>
+                <button
+                  onClick={() => loadAIAdvice()}
+                  disabled={loadingAdvice}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {loadingAdvice ? (
+                    <>
+                      <div className="animate-spin">⏳</div>
+                      <span>Генерация...</span>
+                    </>
+                  ) : aiAdvice ? (
+                    <>
+                      <span>🔄</span>
+                      <span>Обновить совет</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>✨</span>
+                      <span>Получить совет</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              {loadingAdvice ? (
+                <div className="text-white/60 flex items-center gap-2">
+                  <div className="animate-spin">⏳</div>
+                  <span>Генерация совета...</span>
                 </div>
-              )}
-              {courseStats.average_grade < 3.5 && (
-                <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4">
-                  <p className="text-white">
-                    Средний балл ниже 3.5. Рассмотрите возможность дополнительных консультаций или упрощения материала.
-                  </p>
+              ) : aiAdvice ? (
+                <div className="markdown-content text-white/90 leading-relaxed">
+                  <ReactMarkdown
+                    components={{
+                      p: ({ node, ...props }) => <p className="mb-3" {...props} />,
+                      strong: ({ node, ...props }) => <strong className="font-bold text-white" {...props} />,
+                      ul: ({ node, ...props }) => <ul className="list-disc list-inside mb-3 space-y-1" {...props} />,
+                      ol: ({ node, ...props }) => <ol className="list-decimal list-inside mb-3 space-y-1" {...props} />,
+                      li: ({ node, ...props }) => <li className="ml-4" {...props} />,
+                    }}
+                  >
+                    {aiAdvice}
+                  </ReactMarkdown>
                 </div>
-              )}
-              {courseStats.average_grade >= 4.5 && (
-                <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4">
-                  <p className="text-white">
-                    Отличные результаты! Средний балл выше 4.5. Продолжайте в том же духе!
+              ) : (
+                <div>
+                  <p className="text-white/60 text-sm mb-3">
+                    Нажмите кнопку "Получить совет", чтобы получить персональные рекомендации на основе статистики ваших групп по посещаемости и среднему баллу.
                   </p>
+                  <div className="flex gap-2 text-xs text-white/50">
+                    <span> Совет анализирует группы с низкой посещаемостью или средним баллом</span>
+                  </div>
                 </div>
               )}
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

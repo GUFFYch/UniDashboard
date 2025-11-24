@@ -367,4 +367,35 @@ export const api = {
     });
     return response.data;
   },
+
+  getAIStudentAdvice: async (adviceType: string = 'pleasant') => {
+    const response = await apiClient.get('/api/ai/advice/student', {
+      params: { advice_type: adviceType }
+    });
+    return response.data;
+  },
+
+  getAIStudentAdviceById: async (studentId: number, adviceType: string = 'pleasant') => {
+    const response = await apiClient.get(`/api/ai/advice/student/${studentId}`, {
+      params: { advice_type: adviceType }
+    });
+    return response.data;
+  },
+
+  getAITeacherAdvice: async () => {
+    const response = await apiClient.get('/api/ai/advice/teacher');
+    return response.data;
+  },
+
+  getAIStudentCourseAdvice: async (studentId: number, courseId: number) => {
+    const response = await apiClient.get(`/api/ai/advice/student/${studentId}/course/${courseId}`);
+    return response.data;
+  },
+
+  getAIAdminAdvice: async (query: string = '') => {
+    const response = await apiClient.post('/api/ai/advice/admin', {
+      query
+    });
+    return response.data;
+  },
 };

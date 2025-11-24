@@ -21,6 +21,7 @@ from app.achievements_new import (
 )
 from app.data_generator import generate_all_data
 from app.ai_predictions import update_student_predictions
+from app.ai_advisor import get_student_advice, get_teacher_advice, get_student_course_advice, get_admin_advice
 from app.auth import (
     get_current_user, get_current_student, get_current_teacher,
     require_role, can_access_student, verify_password, get_password_hash,
@@ -70,6 +71,10 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     user: UserResponse
+
+
+class AdminQueryRequest(BaseModel):
+    query: str = ""
 
 
 class StudentResponse(BaseModel):
@@ -2867,5 +2872,134 @@ async def get_student_attendance_by_hash(
     return await get_student_attendance(
         student.id, start_date, end_date, course_id, current_user, db
     )
+
+
+@app.get("/api/ai/advice/student")
+async def get_ai_student_advice(
+    advice_type: str = "pleasant",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получение ИИ-совета для студента
+    
+    Args:
+        advice_type: Тип совета - "pleasant" (приятный) или "useful" (полезный)
+    """
+    if current_user.role != "student" or not current_user.student_id:
+        raise HTTPException(status_code=403, detail="Доступно только для студентов")
+    
+    if advice_type not in ["pleasant", "useful"]:
+        raise HTTPException(status_code=400, detail="Неверный тип совета. Используйте 'pleasant' или 'useful'")
+    
+    try:
+        advice = get_student_advice(db, current_user.student_id, advice_type)
+        return {"advice": advice, "type": advice_type}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации совета: {str(e)}")
+
+
+@app.get("/api/ai/advice/student/{student_id}")
+async def get_ai_student_advice_by_id(
+    student_id: int,
+    advice_type: str = "pleasant",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получение ИИ-совета для конкретного студента (для преподавателей и админов)
+    
+    Args:
+        student_id: ID студента
+        advice_type: Тип совета - "pleasant" (приятный) или "useful" (полезный)
+    """
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Студент не найден")
+    
+    if not can_access_student(current_user, student_id, db):
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    
+    if advice_type not in ["pleasant", "useful"]:
+        raise HTTPException(status_code=400, detail="Неверный тип совета. Используйте 'pleasant' или 'useful'")
+    
+    try:
+        advice = get_student_advice(db, student_id, advice_type)
+        return {"advice": advice, "type": advice_type}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации совета: {str(e)}")
+
+
+@app.get("/api/ai/advice/teacher")
+async def get_ai_teacher_advice(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение ИИ-совета для преподавателя"""
+    if current_user.role != "teacher" or not current_user.teacher_id:
+        raise HTTPException(status_code=403, detail="Доступно только для преподавателей")
+    
+    try:
+        advice = get_teacher_advice(db, current_user.teacher_id)
+        return {"advice": advice}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации совета: {str(e)}")
+
+
+@app.get("/api/ai/advice/student/{student_id}/course/{course_id}")
+async def get_ai_student_course_advice(
+    student_id: int,
+    course_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение ИИ-совета для студента по конкретному курсу"""
+    # Проверяем доступ
+    if current_user.role == "student":
+        if current_user.student_id != student_id:
+            raise HTTPException(status_code=403, detail="Доступ запрещен")
+    elif current_user.role in ["teacher", "admin"]:
+        # Преподаватели и админы могут видеть советы для студентов
+        if not can_access_student(current_user, student_id, db):
+            raise HTTPException(status_code=403, detail="Доступ запрещен")
+    else:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    
+    # Проверяем существование студента и курса
+    student = db.query(Student).filter(Student.id == student_id).first()
+    course = db.query(Course).filter(Course.id == course_id).first()
+    
+    if not student:
+        raise HTTPException(status_code=404, detail="Студент не найден")
+    if not course:
+        raise HTTPException(status_code=404, detail="Курс не найден")
+    
+    try:
+        advice = get_student_course_advice(db, student_id, course_id)
+        return {"advice": advice}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации совета: {str(e)}")
+
+
+@app.post("/api/ai/advice/admin")
+async def get_ai_admin_advice(
+    request: AdminQueryRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получение ИИ-совета/ответа для администратора
+    
+    Args:
+        request: Запрос с вопросом администратора на естественном языке
+    """
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступно только для администраторов")
+    
+    try:
+        advice = get_admin_advice(db, request.query)
+        return {"advice": advice, "query": request.query}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка генерации совета: {str(e)}")
 
 
