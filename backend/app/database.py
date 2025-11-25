@@ -2,6 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,7 +25,13 @@ if not DATABASE_URL:
         DATABASE_URL = "postgresql://edupulse:edupulse@localhost:5432/edupulse"
     except:
         # Используем SQLite как fallback
-        DATABASE_URL = "sqlite:///./edupulse.db"
+        # Определяем путь к директории backend
+        backend_dir = Path(__file__).parent.parent
+        # Проверяем, какая база данных существует
+        if (backend_dir / "mirea_synapse.db").exists():
+            DATABASE_URL = f"sqlite:///{backend_dir / 'mirea_synapse.db'}"
+        else:
+            DATABASE_URL = f"sqlite:///{backend_dir / 'edupulse.db'}"
 
 # Для SQLite нужен специальный параметр
 if DATABASE_URL.startswith("sqlite"):

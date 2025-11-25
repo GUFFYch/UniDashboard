@@ -22,7 +22,7 @@ from app.achievements_new import (
     get_all_achievements_new, get_student_achievements_new,
     create_achievement_template_new, assign_achievement_new
 )
-from app.data_generator import generate_all_data
+from app.data_generator import generate_all_data, generate_today_attendance
 from app.ai_predictions import update_student_predictions
 from app.ai_advisor import get_student_advice, get_teacher_advice, get_student_course_advice, get_admin_advice
 from app.auth import (
@@ -251,6 +251,27 @@ async def generate_data(db: Session = Depends(get_db)):
     try:
         generate_all_data(db)
         return {"message": "Данные успешно сгенерированы"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/generate-today-attendance")
+async def generate_today_attendance_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Генерация случайной посещаемости студентов за сегодня"""
+    # Только для админа или преподавателя
+    if current_user.role not in ["admin", "teacher"]:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+    
+    try:
+        generate_today_attendance(db)
+        today = date.today()
+        return {
+            "message": f"Посещаемость за {today.strftime('%Y-%m-%d')} успешно сгенерирована",
+            "date": today.isoformat()
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

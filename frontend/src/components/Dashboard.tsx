@@ -27,6 +27,7 @@ const Dashboard: React.FC = () => {
   const [activityData, setActivityData] = useState<any[]>([]);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [teacherGroupsCount, setTeacherGroupsCount] = useState<number>(0);
   
   // Фильтры
   const [leaderboardLimit, setLeaderboardLimit] = useState(10);
@@ -70,6 +71,30 @@ const Dashboard: React.FC = () => {
       isMounted = false;
     };
   }, []); // Загружаем только один раз при монтировании
+
+  // Для преподавателя загружаем всех студентов без фильтров для подсчета групп
+  useEffect(() => {
+    let isMounted = true;
+    
+    if (user?.role === 'teacher' && teacherGroupsCount === 0) {
+      api.getStudents().then(allStudentsData => {
+        if (isMounted) {
+          const uniqueGroups = new Set(
+            allStudentsData.map(s => s.group).filter(Boolean)
+          );
+          setTeacherGroupsCount(uniqueGroups.size);
+        }
+      }).catch(error => {
+        if (isMounted) {
+          console.error('Error loading teacher students:', error);
+        }
+      });
+    }
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.role, teacherGroupsCount]); // Загружаем при изменении роли пользователя
 
   const loadData = useCallback(async () => {
     try {
@@ -347,7 +372,7 @@ const Dashboard: React.FC = () => {
                   <Link to="/teacher" className="block p-6 hover:bg-white/5 transition-colors rounded-lg">
                     <StatCard
                       title="Мои группы"
-                      value={originalStats?.total_students ?? stats?.total_students ?? 0}
+                      value={teacherGroupsCount || 0}
                       icon=""
                       color="bg-blue-500"
                       valueColor="text-blue-400"

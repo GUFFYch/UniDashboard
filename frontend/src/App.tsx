@@ -161,7 +161,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-800">
+        <div className="min-h-screen">
           <AppRoutes />
         </div>
       </Router>

@@ -547,6 +547,172 @@ def generate_attendance(db: Session, students, courses):
     db.commit()
 
 
+def generate_today_attendance(db: Session):
+    """Генерация случайной посещаемости студентов за сегодня"""
+    from sqlalchemy import func
+    
+    today = date.today()
+    buildings = ["ПВ-78", "ПВ-86", "Ст", "МП", "СГ"]
+    
+    # Проверяем, что сегодня будний день
+    if today.weekday() >= 5:
+        print(f"Сегодня выходной день ({today.strftime('%A')}), посещаемость не генерируется")
+        return
+    
+    # Получаем всех студентов
+    students = db.query(Student).all()
+    if not students:
+        print("Нет студентов в базе данных")
+        return
+    
+    # Получаем все курсы
+    courses = db.query(Course).all()
+    if not courses:
+        print("Нет курсов в базе данных")
+        return
+    
+    # Удаляем существующую посещаемость за сегодня (если есть)
+    db.query(Attendance).filter(Attendance.date == today).delete()
+    db.commit()
+    
+    print(f"Генерация посещаемости за {today.strftime('%Y-%m-%d')}...")
+    
+    for student in students:
+        # Определяем категорию студента на основе его среднего балла и исторической посещаемости
+        # Средний балл
+        avg_grade = db.query(func.avg(Grade.value)).filter(
+            Grade.student_id == student.id
+        ).scalar() or 0.0
+        
+        # Историческая посещаемость за последние 30 дней
+        total_attendance = db.query(Attendance.id).filter(
+            Attendance.student_id == student.id,
+            Attendance.date >= today - timedelta(days=30),
+            Attendance.date < today
+        ).count()
+        present_attendance = db.query(Attendance.id).filter(
+            Attendance.student_id == student.id,
+            Attendance.date >= today - timedelta(days=30),
+            Attendance.date < today,
+            Attendance.present == True
+        ).count()
+        historical_rate = (present_attendance / total_attendance) if total_attendance > 0 else 0.75
+        
+        # Определяем вероятность посещения на основе данных студента
+        if avg_grade >= 4.5 and historical_rate >= 0.9:
+            # Отличники с высокой посещаемостью
+            base_attendance_prob = 0.95
+            course_attendance_prob = 0.92
+        elif avg_grade < 2.5 or historical_rate < 0.3:
+            # Проблемные студенты или те, кто почти не ходит
+            base_attendance_prob = 0.2
+            course_attendance_prob = 0.15
+        elif historical_rate < 0.5:
+            # Прогульщики
+            base_attendance_prob = 0.3
+            course_attendance_prob = 0.25
+        else:
+            # Обычные студенты
+            base_attendance_prob = 0.75
+            course_attendance_prob = 0.70
+        
+        # Добавляем небольшую случайность
+        base_attendance_prob = max(0.0, min(1.0, base_attendance_prob + random.uniform(-0.1, 0.1)))
+        course_attendance_prob = max(0.0, min(1.0, course_attendance_prob + random.uniform(-0.1, 0.1)))
+        
+        # Генерируем общее посещение университета
+        is_present_university = random.random() < base_attendance_prob
+        
+        if is_present_university:
+            # Время входа: 8:00 - 10:00
+            entry_hour = random.randint(8, 10)
+            entry_minute = random.randint(0, 59)
+            entry_time = datetime.combine(today, datetime.min.time().replace(hour=entry_hour, minute=entry_minute))
+            
+            # Время выхода: 16:00 - 20:00
+            exit_hour = random.randint(16, 20)
+            exit_minute = random.randint(0, 59)
+            exit_time = datetime.combine(today, datetime.min.time().replace(hour=exit_hour, minute=exit_minute))
+            
+            building = random.choice(buildings)
+            
+            # Общее посещение университета (без привязки к курсу)
+            attendance = Attendance(
+                student_id=student.id,
+                course_id=None,
+                date=today,
+                present=True,
+                building=building,
+                entry_time=entry_time,
+                exit_time=exit_time
+            )
+            db.add(attendance)
+        else:
+            # Запись об отсутствии в университете
+            attendance = Attendance(
+                student_id=student.id,
+                course_id=None,
+                date=today,
+                present=False,
+                building=None,
+                entry_time=None,
+                exit_time=None
+            )
+            db.add(attendance)
+        
+        # Генерируем посещаемость по курсам студента
+        # Получаем курсы, которые изучает студент (по оценкам)
+        student_courses = db.query(Course).join(Grade).filter(
+            Grade.student_id == student.id
+        ).distinct().all()
+        
+        # Если у студента нет оценок, берем случайные курсы
+        if not student_courses:
+            student_courses = random.sample(courses, min(random.randint(3, 6), len(courses)))
+        
+        for course in student_courses:
+            # Посещаемость на пару зависит от общей посещаемости
+            if is_present_university:
+                # Если студент в университете, вероятность посещения пары выше
+                is_present_course = random.random() < course_attendance_prob
+            else:
+                # Если студента нет в университете, он точно не на паре
+                is_present_course = False
+            
+            if is_present_course:
+                building = random.choice(buildings)
+                # Время входа для занятия
+                entry_hour = random.randint(8, 10)
+                entry_minute = random.randint(0, 59)
+                entry_time = datetime.combine(today, datetime.min.time().replace(hour=entry_hour, minute=entry_minute))
+                
+                attendance = Attendance(
+                    student_id=student.id,
+                    course_id=course.id,
+                    date=today,
+                    present=True,
+                    building=building,
+                    entry_time=entry_time,
+                    exit_time=None  # Для занятий может не быть времени выхода
+                )
+                db.add(attendance)
+            else:
+                # Запись об отсутствии на занятии
+                attendance = Attendance(
+                    student_id=student.id,
+                    course_id=course.id,
+                    date=today,
+                    present=False,
+                    building=None,
+                    entry_time=None,
+                    exit_time=None
+                )
+                db.add(attendance)
+    
+    db.commit()
+    print(f"Посещаемость за {today.strftime('%Y-%m-%d')} успешно сгенерирована")
+
+
 def generate_lms_activity(db: Session, students):
     """Генерация активности в LMS с учетом категорий студентов"""
     action_types = ["login", "view_material", "submit_assignment", "forum_post"]
